@@ -1,5 +1,5 @@
 # FireNet
-Realtime Multiplayer using Firebase's Realtime-Database.
+Realtime Multiplayer for Unity 3D using Firebase's Realtime-Database.
 Copy of Pun 2 (without the closed source payment part)
 
 # WIP!!!
