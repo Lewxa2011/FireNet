@@ -9,5 +9,5 @@ Firebase Account with a Firebase App with Realtime-Database and Authentication (
 This is a WORK IN PROGRESS.
 Has bugs.
 Needs optimization.
-Code isn't formatted very well, sorry lol
-Needs XML docs
+Code isn't formatted very well, sorry lol.
+Needs XML docs! Might just use one of those AI doc writers, im not rlly wanting to write docs :(
