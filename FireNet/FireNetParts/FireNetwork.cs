@@ -221,14 +221,6 @@ public class FireNetwork : MonoBehaviour
         QualitySettings.vSyncCount = 1;
     }
 
-    private void OnDestroy()
-    {
-        if (Instance == this)
-        {
-            StartCoroutine(GracefulShutdown());
-        }
-    }
-
     private void OnApplicationQuit()
     {
         if (Instance == this && enableGracefulDisconnection)
@@ -1779,4 +1771,5 @@ public class FirebaseAsyncWorker
 
         semaphore.Dispose();
     }
+
 }
