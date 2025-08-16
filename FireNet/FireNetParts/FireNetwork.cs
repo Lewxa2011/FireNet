@@ -26,6 +26,11 @@ public class FireNetwork : MonoBehaviour
     public float rpcPollInterval = 0.1f;
     public int maxRpcBatchSize = 20;
 
+    [Header("Cleanup Settings")]
+    public float rpcCleanupInterval = 10f; // How often to cleanup old RPCs
+    public float rpcMaxAge = 30f; // Maximum age for non-buffered RPCs in seconds
+    public bool autoCleanupEmptyRooms = true;
+
     // Events
     public static event System.Action OnConnectedToMaster;
     public static event System.Action<string> OnJoinedRoom;
@@ -55,15 +60,20 @@ public class FireNetwork : MonoBehaviour
     // RPC system
     private Queue<RpcData> incomingRpcQueue = new Queue<RpcData>();
     private long lastRpcTimestamp = 0;
+    private float lastRpcCleanup = 0;
 
     // References
     private DatabaseReference roomPlayersRef;
     private DatabaseReference roomRpcRef;
     private DatabaseReference roomRef;
+    private DatabaseReference playerPresenceRef;
 
     // Async worker
     private OptimizedFirebaseAsyncWorker asyncWorker;
     private CancellationTokenSource cancellationTokenSource;
+
+    // Cleanup tracking
+    private bool hasSetupDisconnectHandlers = false;
 
     private struct RpcData
     {
@@ -74,6 +84,7 @@ public class FireNetwork : MonoBehaviour
         public long timestamp;
         public RpcTarget target;
         public bool buffered;
+        public string rpcId;
     }
 
     private void Awake()
@@ -97,6 +108,13 @@ public class FireNetwork : MonoBehaviour
     private void Update()
     {
         ProcessIncomingRpcs();
+
+        // Handle RPC cleanup if we're the master client
+        if (isMasterClient && inRoom && Time.time - lastRpcCleanup > rpcCleanupInterval)
+        {
+            CleanupOldRpcs();
+            lastRpcCleanup = Time.time;
+        }
     }
 
     private void ProcessIncomingRpcs()
@@ -116,12 +134,50 @@ public class FireNetwork : MonoBehaviour
         }
     }
 
+    private void OnApplicationPause(bool pauseStatus)
+    {
+        if (pauseStatus && inRoom)
+        {
+            // App is being paused, ensure cleanup handlers are set
+            SetupDisconnectCleanup();
+        }
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus && inRoom)
+        {
+            // App lost focus, ensure cleanup handlers are set
+            SetupDisconnectCleanup();
+        }
+    }
+
     private void OnApplicationQuit()
+    {
+        CleanupOnExit();
+    }
+
+    private void OnDestroy()
+    {
+        CleanupOnExit();
+    }
+
+    private void OnDisable()
+    {
+        CleanupOnExit();
+    }
+
+    private void CleanupOnExit()
     {
         if (inRoom)
         {
+            // Immediate cleanup without waiting
             LeaveRoomImmediate();
         }
+
+        // Cancel async operations
+        cancellationTokenSource?.Cancel();
+        asyncWorker?.Stop();
     }
 
     // Connection Management
@@ -134,7 +190,7 @@ public class FireNetwork : MonoBehaviour
 
     public static void Disconnect()
     {
-        Instance?.LeaveRoomImmediate();
+        Instance?.CleanupOnExit();
         connectionState = ConnectionState.Disconnected;
         OnDisconnected?.Invoke();
     }
@@ -241,7 +297,8 @@ public class FireNetwork : MonoBehaviour
             ["playerCount"] = 0,
             ["isOpen"] = options.isOpen,
             ["isVisible"] = options.isVisible,
-            ["gameVersion"] = gameVersion
+            ["gameVersion"] = gameVersion,
+            ["createdAt"] = ServerValue.Timestamp
         };
 
         bool success = false;
@@ -291,7 +348,9 @@ public class FireNetwork : MonoBehaviour
             roomRef = database.Child($"rooms/{roomName}");
             roomPlayersRef = roomRef.Child("players");
             roomRpcRef = roomRef.Child("rpc");
+            playerPresenceRef = roomPlayersRef.Child(localPlayer.userId);
 
+            SetupDisconnectCleanup();
             StartCoroutine(PlayerSyncLoop());
             StartCoroutine(RpcPollingLoop());
 
@@ -302,6 +361,37 @@ public class FireNetwork : MonoBehaviour
             OnJoinRoomFailed?.Invoke("Failed to join room");
             connectionState = ConnectionState.ConnectedToMaster;
         }
+    }
+
+    private void SetupDisconnectCleanup()
+    {
+        if (hasSetupDisconnectHandlers || !inRoom) return;
+
+        asyncWorker?.EnqueueOperation(async () =>
+        {
+            try
+            {
+                // Set up OnDisconnect to remove player from room
+                await playerPresenceRef.OnDisconnect().RemoveValue();
+
+                // If we're master client, set up room cleanup
+                if (isMasterClient)
+                {
+                    // Remove entire room if no players left
+                    await roomRef.OnDisconnect().RemoveValue();
+
+                    // Alternative: just remove master status and let another client become master
+                    // await roomRef.Child("masterClientId").OnDisconnect().RemoveValueAsync();
+                }
+
+                hasSetupDisconnectHandlers = true;
+                Debug.Log("OnDisconnect cleanup handlers set up successfully");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to setup disconnect cleanup: {e}");
+            }
+        });
     }
 
     private IEnumerator JoinOrCreateRoomCoroutine(string roomName, RoomOptions options)
@@ -373,13 +463,41 @@ public class FireNetwork : MonoBehaviour
         if (!inRoom) return;
 
         string roomToLeave = currentRoom;
+        bool wasMasterClient = isMasterClient;
         currentRoom = null;
 
+        // Cancel disconnect handlers since we're leaving voluntarily
         asyncWorker?.EnqueueOperation(async () =>
         {
             try
             {
+                // Cancel OnDisconnect handlers
+                await playerPresenceRef?.OnDisconnect().Cancel();
+                if (wasMasterClient && autoCleanupEmptyRooms)
+                {
+                    await roomRef?.OnDisconnect().Cancel();
+                }
+
+                // Remove player data
                 await database.Child($"rooms/{roomToLeave}/players/{localPlayer.userId}").RemoveValueAsync();
+
+                // Clean up room if we were master client and it's empty
+                if (wasMasterClient && autoCleanupEmptyRooms)
+                {
+                    var playersSnapshot = await database.Child($"rooms/{roomToLeave}/players").GetValueAsync();
+                    if (!playersSnapshot.Exists || playersSnapshot.ChildrenCount == 0)
+                    {
+                        await database.Child($"rooms/{roomToLeave}").RemoveValueAsync();
+                        Debug.Log($"Cleaned up empty room: {roomToLeave}");
+                    }
+                    else
+                    {
+                        // Transfer master client role to another player
+                        var firstPlayer = playersSnapshot.Children.First();
+                        await database.Child($"rooms/{roomToLeave}/masterClientId").SetValueAsync(firstPlayer.Key);
+                        await database.Child($"rooms/{roomToLeave}/players/{firstPlayer.Key}/isMasterClient").SetValueAsync(true);
+                    }
+                }
             }
             catch (Exception e)
             {
@@ -399,13 +517,56 @@ public class FireNetwork : MonoBehaviour
         roomRef = null;
         roomPlayersRef = null;
         roomRpcRef = null;
+        playerPresenceRef = null;
         lastRpcTimestamp = 0;
+        lastRpcCleanup = 0;
+        hasSetupDisconnectHandlers = false;
 
         if (localPlayer != null)
             localPlayer.isMasterClient = false;
 
         connectionState = ConnectionState.ConnectedToMaster;
         OnLeftRoom?.Invoke();
+    }
+
+    private void CleanupOldRpcs()
+    {
+        if (!isMasterClient || !inRoom) return;
+
+        asyncWorker?.EnqueueOperation(async () =>
+        {
+            try
+            {
+                var currentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                var cutoffTime = currentTime - (rpcMaxAge * 1000); // Convert to milliseconds
+
+                var snapshot = await roomRpcRef.OrderByChild("timestamp").EndAt(cutoffTime).GetValueAsync();
+
+                if (snapshot.Exists)
+                {
+                    var deleteTasks = new List<Task>();
+
+                    foreach (var child in snapshot.Children)
+                    {
+                        var rpcData = child.Value as Dictionary<string, object>;
+                        if (rpcData != null && !Convert.ToBoolean(rpcData.GetValueOrDefault("buffered", false)))
+                        {
+                            deleteTasks.Add(child.Reference.RemoveValueAsync());
+                        }
+                    }
+
+                    if (deleteTasks.Count > 0)
+                    {
+                        await Task.WhenAll(deleteTasks);
+                        Debug.Log($"Cleaned up {deleteTasks.Count} old RPCs");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"RPC cleanup failed: {e}");
+            }
+        });
     }
 
     // Network Sync
@@ -445,6 +606,12 @@ public class FireNetwork : MonoBehaviour
                         {
                             leftPlayers.Add(existingPlayer);
                         }
+                    }
+
+                    // Update player count in room data
+                    if (isMasterClient)
+                    {
+                        await roomRef.Child("playerCount").SetValueAsync(newPlayers.Count);
                     }
 
                     // Update on main thread
@@ -527,17 +694,12 @@ public class FireNetwork : MonoBehaviour
                             parameters = parameters,
                             timestamp = Convert.ToInt64(rpcData["timestamp"]),
                             target = (RpcTarget)Enum.Parse(typeof(RpcTarget), rpcData["target"].ToString()),
-                            buffered = Convert.ToBoolean(rpcData.GetValueOrDefault("buffered", false))
+                            buffered = Convert.ToBoolean(rpcData.GetValueOrDefault("buffered", false)),
+                            rpcId = child.Key
                         };
 
                         rpcsToProcess.Add(rpc);
                         maxTimestamp = Math.Max(maxTimestamp, rpc.timestamp);
-
-                        // Clean up non-buffered RPCs
-                        if (!rpc.buffered && isMasterClient)
-                        {
-                            _ = child.Reference.RemoveValueAsync();
-                        }
                     }
 
                     lastRpcTimestamp = maxTimestamp;
@@ -685,9 +847,34 @@ public class FireNetwork : MonoBehaviour
             });
         }
     }
+
+    // Public cleanup methods for external use
+    public static void ForceCleanupRoom(string roomName)
+    {
+        if (isMasterClient == true)
+        {
+            Instance.asyncWorker?.EnqueueOperation(async () =>
+            {
+                try
+                {
+                    await Instance.database.Child($"rooms/{roomName}").RemoveValueAsync();
+                    Debug.Log($"Force cleaned up room: {roomName}");
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"Failed to force cleanup room: {e}");
+                }
+            });
+        }
+    }
+
+    public static void ForceCleanupOldRpcs()
+    {
+        Instance?.CleanupOldRpcs();
+    }
 }
 
-// Network Serialization System
+// Network Serialization System (unchanged)
 public static class NetworkSerializer
 {
     private const char SEPARATOR = '|';
@@ -822,7 +1009,7 @@ public static class NetworkSerializer
     }
 }
 
-// Main Thread Dispatcher
+// Main Thread Dispatcher (unchanged)
 public class UnityMainThreadDispatcher : MonoBehaviour
 {
     private static UnityMainThreadDispatcher _instance;
@@ -866,7 +1053,7 @@ public class UnityMainThreadDispatcher : MonoBehaviour
     }
 }
 
-// Extension methods
+// Extension methods (unchanged)
 public static class DictionaryExtensions
 {
     public static string GetValueOrDefault(this Dictionary<string, object> dictionary, string key, string defaultValue = "")
