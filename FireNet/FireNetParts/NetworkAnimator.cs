@@ -71,7 +71,7 @@ namespace FireNet
                 }
             }
 
-            
+
             if (!DictionariesEqual(currentParams, lastSentParams))
             {
                 networkView.RPC("UpdateAnimatorParams", RpcTarget.Others, currentParams);
