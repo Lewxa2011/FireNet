@@ -8,12 +8,12 @@ public class NetworkTransform : MonoBehaviour, INetworkBehaviour
     public bool syncRotation = true;
     public bool syncScale = false;
 
-    [Header("Performance - Optimized")]
+    [Header("Performance")]
     public float sendRate = 8f; // Slightly reduced from 10f
     public float lerpRate = 12f; // Slightly reduced for smoother movement
     public float snapDistance = 5f;
 
-    [Header("Thresholds - Optimized for Data Reduction")]
+    [Header("Thresholds")]
     public float positionThreshold = 0.05f; // Reduced from 0.1f for better precision
     public float rotationThreshold = 2f; // Reduced from 5f
     public float velocityThreshold = 0.1f; // New: only sync if moving significantly

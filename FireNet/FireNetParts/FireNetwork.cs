@@ -22,12 +22,12 @@ public class FireNetwork : MonoBehaviour
     public string gameVersion = "1.0";
     public string firebaseUrl = "https://put-YOUR-realtime-database-URL-here-diddy-blud-default-rtdb.firebaseio.com/";
 
-    [Header("Performance - Optimized")]
+    [Header("Performance")]
     public float playerSyncInterval = 3f; // Increased from 2f to reduce calls
     public float rpcPollInterval = 0.15f; // Slightly increased for better batching
     public int maxRpcBatchSize = 30; // Increased batch size
 
-    [Header("Cleanup Settings - Optimized")]
+    [Header("Cleanup Settings")]
     public float rpcCleanupInterval = 20f; // More frequent cleanup
     public float rpcMaxAge = 30f; // Shorter retention time
     public bool autoCleanupEmptyRooms = true;
