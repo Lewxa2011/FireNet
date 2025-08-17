@@ -14,6 +14,8 @@ HEAVILY RECOMMENDED:
   }
 }
 
+3. Firebase SDK installed in your unity project (find it here: https://github.com/firebase/firebase-unity-sdk/releases/latest) (Install Realtime Database, Authentication, and Optionally Analytics)
+
 3. ENSURE there is a gameobject with the FireNetwork component in the scene!
 
 4. Script whatever!!
