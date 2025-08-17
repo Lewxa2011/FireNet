@@ -50,7 +50,10 @@ public class NetworkManager : MonoBehaviour
     {
         Log("Left room event received.");
 
-        FireNetwork.NetDestroy(localNetP.gameObject);
+        if (localNetP != null) // it's getting destroyed before we're leaving the room with the cleanup shit so do this checkkk
+        {
+            FireNetwork.NetDestroy(localNetP.gameObject);
+        }
     }
 
     private void FireNetwork_OnJoinedRoom(string roomName)
