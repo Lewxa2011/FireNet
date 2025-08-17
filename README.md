@@ -2,12 +2,24 @@
 Realtime Multiplayer for Unity 3D using Firebase's Realtime-Database.
 Copy of Pun 2 (without the closed source payment part)
 
+# SETUP
+1. Firebase Account with a Firebase App with Realtime-Database and Authentication (Email and Password auth option enabled)
+
+HEAVILY RECOMMENDED:
+2. Set your Realtime Database's rules to this:
+{
+  "rules": {
+    ".read": "true",
+    ".write": "auth != null"
+  }
+}
+
+3. ENSURE there is a gameobject with the FireNetwork component in the scene!
+
+4. Script whatever!!
+
 # NOTICE!
 If not obvious, I got lazy at points and used AI to run through the code and do stuff.
-A good majority is my stuff, but if you see comments riddled through the code everywhere just know that lol
-
-# Requirements
-Firebase Account with a Firebase App with Realtime-Database and Authentication (EMAIL and password auth option enabled)
 
 # WIP!!!
 This is a WORK IN PROGRESS.
