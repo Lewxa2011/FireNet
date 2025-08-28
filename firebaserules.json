@@ -1,0 +1,46 @@
+{
+  "rules": {
+    "deviceAuth": {
+      "$hashedDeviceId": {
+        ".read": "auth != null && (auth.uid == data.child('userId').val() || !data.exists())",
+        ".write": "auth != null && (auth.uid == data.child('userId').val() || !data.exists())",
+        "userId": {
+          ".validate": "newData.val() == auth.uid"
+        }
+      }
+    },
+    
+    "rooms": {
+      ".read": "auth != null",
+      "$roomId": {
+        ".write": "auth != null && (!data.exists() || auth.uid == data.child('masterClientId').val())",
+        
+        "players": {
+          "$playerId": {
+            ".write": "auth != null && (auth.uid == $playerId || auth.uid == root.child('rooms').child($roomId).child('masterClientId').val())"
+          }
+        },
+        
+        "rpc": {
+          "$rpcId": {
+            ".write": "auth != null && ((!data.exists() && root.child('rooms').child($roomId).child('players').child(auth.uid).exists()) || (data.exists() && (auth.uid == data.child('senderId').val() || auth.uid == root.child('rooms').child($roomId).child('masterClientId').val())))",
+            "senderId": {
+              ".validate": "newData.val() == auth.uid"
+            }
+          }
+        }
+      }
+    },
+    
+    "lobby": {
+      "$lobbyName": {
+        ".read": "auth != null",
+        "players": {
+          "$playerId": {
+            ".write": "auth != null && auth.uid == $playerId"
+          }
+        }
+      }
+    }
+  }
+}
