@@ -12,7 +12,7 @@ Copy of Pun 2 (without the closed source payment part)
 4. Script whatever!!
 
 # NOTICE!
-If not obvious, I got lazy at points and used AI to run through the code and do stuff.
+If not obvious, I got lazy at points and used AI to run through the code and do stuff. (hence the ugly comments everywhere)
 
 # WIP!!!
 This is a WORK IN PROGRESS.
