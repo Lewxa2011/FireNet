@@ -33,7 +33,7 @@
       ".read": "auth != null",
 
       "$roomId": {
-        ".write": "auth != null && (!data.exists() || auth.uid == data.child('masterClientId').val())",
+        ".write": "auth != null && (!data.exists() || auth.uid == data.child('masterClientId').val() || !data.child('players').exists())",
 
         "name": {
           ".validate": "newData.isString()"
