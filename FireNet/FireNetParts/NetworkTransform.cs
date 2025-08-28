@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 public class NetworkTransform : MonoBehaviour, INetworkBehaviour
@@ -7,6 +7,7 @@ public class NetworkTransform : MonoBehaviour, INetworkBehaviour
     public bool syncPosition = true;
     public bool syncRotation = true;
     public bool syncScale = false;
+    public bool isMasterClientOnly = false; // The new option 🚀
 
     [Header("Performance")]
     public float sendRate = 8f; // Slightly reduced from 10f
@@ -65,8 +66,8 @@ public class NetworkTransform : MonoBehaviour, INetworkBehaviour
             float velMagnitude = velocity.magnitude;
 
             return posDistance > posThreshold ||
-                   rotAngle > rotThreshold ||
-                   velMagnitude > velThreshold;
+                       rotAngle > rotThreshold ||
+                       velMagnitude > velThreshold;
         }
     }
 
@@ -114,7 +115,9 @@ public class NetworkTransform : MonoBehaviour, INetworkBehaviour
 
     private void Update()
     {
-        if (networkView.isMine)
+        bool isMyTurnToSend = isMasterClientOnly ? networkView.isMasterClient : networkView.isMine;
+
+        if (isMyTurnToSend)
         {
             UpdateAdaptiveSendRate();
 
@@ -634,7 +637,8 @@ public class NetworkTransform : MonoBehaviour, INetworkBehaviour
     // Force an immediate sync (useful for teleportation, etc.)
     public void ForceSend()
     {
-        if (networkView.isMine)
+        bool isMyTurnToSend = isMasterClientOnly ? networkView.isMasterClient : networkView.isMine;
+        if (isMyTurnToSend)
         {
             nextSendTime = 0f;
             stationaryTime = 0f; // Reset stationary timer
