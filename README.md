@@ -5,16 +5,7 @@ Copy of Pun 2 (without the closed source payment part)
 # SETUP
 1. Firebase Account with a Firebase App with Realtime-Database and Authentication (Email and Password auth option enabled)
 
-HEAVILY RECOMMENDED:
-2. Set your Realtime Database's rules to this:
-{
-  "rules": {
-    ".read": "true",
-    ".write": "auth != null"
-  }
-}
-
-3. Firebase SDK installed in your unity project (find it here: https://github.com/firebase/firebase-unity-sdk/releases/latest) (Install Realtime Database, Authentication, and Optionally Analytics)
+2. Firebase SDK installed in your unity project (find it here: https://github.com/firebase/firebase-unity-sdk/releases/latest) (Install Realtime Database, Authentication, and Optionally Analytics)
 
 3. ENSURE there is a gameobject with the FireNetwork component in the scene!
 
