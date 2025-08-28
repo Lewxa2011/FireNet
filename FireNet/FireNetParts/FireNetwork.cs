@@ -969,14 +969,27 @@ public class FireNetwork : MonoBehaviour
     }
 
     // Optimized RPC cleanup with strict buffered retention
-    private async Task CleanupPlayerRpcs(string playerId, string roomName)
+    private async Task CleanupPlayerRpcs(string playerId, string roomName, bool isLeavingRoom = false)
     {
         try
         {
+            // If the player is leaving the room, perform a final cleanup of ALL their RPCs.
+            if (isLeavingRoom)
+            {
+                Debug.Log($"Player {playerId} is leaving; removing all their RPCs (including buffered).");
+                var playerRpcsRef = database.Child($"rooms/{roomName}/rpc")
+                                            .OrderByChild("senderId").EqualTo(playerId)
+                                            .Reference;
+                await playerRpcsRef.RemoveValueAsync();
+                return; // Exit after final cleanup.
+            }
+
+            // --- REGULAR CLEANUP for expired, non-buffered RPCs ---
+
             var currentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
             var cutoffTime = currentTime - (rpcMaxAge * 1000);
 
-            // Pull all RPCs older than cutoff
+            // Query for RPCs that are older than the max age.
             var snapshot = await database.Child($"rooms/{roomName}/rpc")
                 .OrderByChild("timestamp")
                 .EndAt(cutoffTime)
@@ -993,39 +1006,25 @@ public class FireNetwork : MonoBehaviour
                 if (rpcData == null) continue;
 
                 var senderId = rpcData.GetValueOrDefault("senderId", "")?.ToString();
+
+                // Only clean up RPCs belonging to the specified player.
+                if (senderId != playerId) continue;
+
                 var isBuffered = Convert.ToBoolean(rpcData.GetValueOrDefault("buffered", false));
 
-                // Rule 1: NEVER delete buffered RPCs unless the room is gone
-                if (isBuffered)
-                    continue;
+                // During regular cleanup, NEVER delete buffered RPCs.
+                if (isBuffered) continue;
 
-                // Rule 2: Non-buffered RPCs from a given player should be deleted after expiry
-                if (senderId == playerId)
-                {
-                    deleteTasks.Add(child.Reference.RemoveValueAsync());
-                    rpcCount++;
-                }
+                // Add the expired, non-buffered RPC to the deletion list.
+                deleteTasks.Add(child.Reference.RemoveValueAsync());
+                rpcCount++;
             }
 
-            // Batch execute deletions
+            // Batch execute all deletions.
             if (deleteTasks.Count > 0)
             {
                 await Task.WhenAll(deleteTasks);
-                deleteTasks.Clear();
-            }
-
-            if (rpcCount > 0)
-            {
                 Debug.Log($"Cleaned up {rpcCount} expired non-buffered RPCs for player {playerId}");
-            }
-
-            // Final: if we're leaving the room, delete *all* of our RPCs (buffered + non-buffered)
-            if (playerCountInRoom == 0 && playerId == localPlayer?.userId && !inRoom)
-            {
-                Debug.Log("Player leaving room, removing all RPCs including buffered.");
-                await database.Child($"rooms/{roomName}/rpc")
-                    .OrderByChild("senderId").EqualTo(playerId)
-                    .Reference.RemoveValueAsync();
             }
         }
         catch (Exception e)

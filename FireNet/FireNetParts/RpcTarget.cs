@@ -4,5 +4,6 @@ public enum RpcTarget
     Others,
     Host,
     AllBuffered,
-    OthersBuffered
+    OthersBuffered,
+    MasterClient
 }

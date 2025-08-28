@@ -60,7 +60,7 @@ public class NetworkManager : MonoBehaviour
     {
         Log("Joined " + roomName);
 
-        localNetP = FireNetwork.NetInstantiate(netPlayerPrefab, GorillaLocomotion.Player.Instance.transform.position, GorillaLocomotion.Player.Instance.transform.rotation).GetComponent<NetworkPlayer>();
+        localNetP = FireNetwork.NetInstantiate(netPlayerPrefab, Vector3.zero, Quaternion.identity).GetComponent<NetworkPlayer>();
     }
 
     private void FireNetwork_OnConnectedToMaster()
