@@ -740,12 +740,7 @@ public class FireNetwork : MonoBehaviour
 
                 if (isMasterClient && autoCleanupEmptyRooms)
                 {
-                    await roomRef.OnDisconnect().UpdateChildren(new Dictionary<string, object>
-                    {
-                        ["playerCount"] = 0,
-                        ["isEmpty"] = true,
-                        ["lastActivity"] = ServerValue.Timestamp
-                    });
+                    await roomRef.OnDisconnect().RemoveValue();
                 }
 
                 hasSetupDisconnectHandlers = true;
@@ -760,11 +755,23 @@ public class FireNetwork : MonoBehaviour
 
     private IEnumerator JoinOrCreateRoomCoroutine(string roomName, RoomOptions options)
     {
-        yield return StartCoroutine(JoinRoomCoroutine(roomName));
+        var roomRef = database.Child("rooms").Child(roomName);
+        var roomExistsTask = roomRef.GetValueAsync();
+        yield return new WaitUntil(() => roomExistsTask.IsCompleted);
 
-        if (connectionState != ConnectionState.ConnectedToRoom)
+        if (roomExistsTask.Exception != null)
         {
-            connectionState = ConnectionState.ConnectedToMaster;
+            Debug.LogError("Error checking room: " + roomExistsTask.Exception);
+            yield break;
+        }
+
+        var snapshot = roomExistsTask.Result;
+        if (snapshot.Exists) // actually check if room exists
+        {
+            yield return StartCoroutine(JoinRoomCoroutine(roomName));
+        }
+        else
+        {
             yield return StartCoroutine(CreateRoomCoroutine(roomName, options));
         }
     }
@@ -968,7 +975,7 @@ public class FireNetwork : MonoBehaviour
         });
     }
 
-    // Optimized RPC cleanup with strict buffered retention
+    // Optimized RPC cleanup with strict buffered retention.Child("players
     private async Task CleanupPlayerRpcs(string playerId, string roomName, bool isLeavingRoom = false)
     {
         try
@@ -1024,7 +1031,6 @@ public class FireNetwork : MonoBehaviour
             if (deleteTasks.Count > 0)
             {
                 await Task.WhenAll(deleteTasks);
-                Debug.Log($"Cleaned up {rpcCount} expired non-buffered RPCs for player {playerId}");
             }
         }
         catch (Exception e)

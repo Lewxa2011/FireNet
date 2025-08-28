@@ -7,12 +7,18 @@ public class NetworkView : MonoBehaviour, INetworkBehaviour
     public string viewId;
     public bool isMine = true;
     public string NetworkId => viewId;
+    [HideInInspector]
     public bool isMasterClient = false;
 
     private void Start()
     {
         if (string.IsNullOrEmpty(viewId))
-            viewId = Guid.NewGuid().ToString();
+        {
+            int hash = this.GetHashCode();
+            byte[] bytes = new byte[16];
+            BitConverter.GetBytes(hash).CopyTo(bytes, 0); // put hash in first 4 bytes
+            viewId = new Guid(bytes).ToString();
+        }
 
         FireNetwork.RegisterNetworkObject(this);
     }
